@@ -85,7 +85,7 @@ end
 ZYD.SaveJson = function(file, tab)
 	jsonG = io.open(file, "a+")
 	local jsonE = json.encode(tab)
-	jsonG:write(jsonE..",")
+	jsonG:write(jsonE)
 	io.close(jsonG)
 end
 
