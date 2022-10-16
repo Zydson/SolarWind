@@ -17,13 +17,25 @@ ZYD.WindAverage = {
 
 ZYD.Explosions = {}
 
-json = require "json" -- HAND Json response
+json = require "json/json" -- HAND Json response
 math.randomseed(os.time())
 
 ZYD.LoadProxies = function(file,tabName)
   for line in io.lines(file) do
     table.insert(ZYD.Proxies[tabName],line)
   end
+end
+
+ZYD.DownloadPC = function(url, path)
+	if path == nil then
+		ZYD.Execute("wget "..url)
+	else
+		ZYD.Execute("wget -P "..path.." "..url)
+	end
+end
+
+ZYD.Download = function(url, path)
+	pcall(ZYD.DownloadPC, url, path)
 end
 
 ZYD.HTTP_GetRequest = function(url)
@@ -46,9 +58,17 @@ ZYD.HTTP_PostRequest = function(url,data,headers)
   end
 end
 
+ZYD.ExecutePC = function(command)
+	ox.execute(command)
+end
+
+ZYD.Execute = function(command)
+	pcall(ZYD.ExecutePC, command)
+end
+
 ZYD.WaitPC = function(ms)
     local sec = tonumber(ms/1000)
-    os.execute("sleep "..sec)
+    ZYD.Execute("sleep "..sec)
 end
 
 ZYD.Wait = function(ms)
@@ -59,6 +79,13 @@ ZYD.GetJson =  function(file)
     local fileJ = assert(io.open(file, "rw"))
     local jsonT = fileJ:read("*all")
     return json.decode(jsonT)
+end
+
+ZYD.SaveJson = function(file, tab)
+	jsonG = io.open(file, "a+")
+	local jsonE = json.encode(tab)
+	jsonG:write(jsonE..",")
+	io.close(jsonG)
 end
 
 noaa_data = json.decode(ZYD.HTTP_GetRequest("https://services.swpc.noaa.gov/products/solar-wind/plasma-7-day.json"))
@@ -73,19 +100,16 @@ for ind,handler in pairs(noaa_data) do
     if ZYD.LastWind["Speed"] ~= 0 then
       if speed > (ZYD.LastWind["Speed"]+ZYD.LastWind["SpeedDetectionThreeshold"]) then
         if dest > (ZYD.WindAverage["Destination"]*3) or temp > (ZYD.WindAverage["Temperature"]*3) then
-          local year,month,day,hour,minute = date:sub(1,4),date:sub(6,7),date:sub(9,10),date:sub(12,13),date:sub(15,16)
-          local video = "https://sdo.gsfc.nasa.gov/assets/img/dailymov/"..year.."/"..month.."/"..day.."/"..year..month..day.."_1024_1700.mp4"
-          local tempTab = {}
-          tempTab["Date"] = date
-          tempTab["Dest"] = dest
-          tempTab["Speed"] = speed
-          tempTab["Temperature"] = temp
-          jsonG = io.open("data.json", "a+")
-          local jsonE = json.encode(tempTab)
-          jsonG:write(jsonE..",")
-          io.close(jsonG)
-          
-        end
+			local year,month,day,hour,minute = date:sub(1,4),date:sub(6,7),date:sub(9,10),date:sub(12,13),date:sub(15,16)
+			local video = "https://sdo.gsfc.nasa.gov/assets/img/dailymov/"..year.."/"..month.."/"..day.."/"..year..month..day.."_1024_1700.mp4"
+			local tempTab = {}
+			tempTab["Date"] = date
+			tempTab["Dest"] = dest
+			tempTab["Speed"] = speed
+			tempTab["Temperature"] = temp
+			
+			table.insert(ZYD.Explosions,tempTab)
+		end
       end
     end
     ZYD.LastWind["Destination"] = dest
@@ -94,3 +118,5 @@ for ind,handler in pairs(noaa_data) do
   end
   end
 end
+
+ZYD.SaveJson("data.json",ZYD.Explosions)
