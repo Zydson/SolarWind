@@ -1,21 +1,27 @@
 ZYD = {}
 ZYD.Threads = {}
 ZYD.Proxies = {}
+ZYD.Explosions = {}
+ZYD.StaticAverage = true
 
 ZYD.LastWind = {
-  ["Destination"] = 0,
+  ["Density"] = 0,
   ["Speed"] = 0,
   ["SpeedDetectionThreeshold"] = 25,
   ["Temperature"] = 0
 }
 
-ZYD.WindAverage = {
-  ["Destination"] = 0.46066544632281,
+ZYD.StaticWindAverage = {  -- Needed if analyzing last minute (Not enough data)
+  ["Density"] = 0.46066544632281,
   ["Speed"] = 461.06411112308,
   ["Temperature"] = 98753.253472596
 }
 
-ZYD.Explosions = {}
+ZYD.WindAverage = {
+  ["Density"] = nil,
+  ["Speed"] = nil,
+  ["Temperature"] = nil
+}
 
 json = require "json/json" -- HAND Json response
 math.randomseed(os.time())
@@ -88,7 +94,32 @@ ZYD.SaveJson = function(file, tab)
 	io.close(jsonG)
 end
 
+ZYD.WindAverageG = function(n_data)
+	OverallDensity, OverallSpeed, OverallTemperature = 0,0,0
+	for a,b in pairs(n_data) do
+		local c_Density, c_Speed, c_Temperature = tonumber(b[2]),tonumber(b[3]),tonumber(b[4])
+		if c_Density ~= nil and c_Speed ~= nil and c_Temperature ~= nil then
+			OverallDensity = OverallDensity + c_Density
+			OverallSpeed = OverallSpeed + c_Speed
+			OverallTemperature = OverallTemperature + c_Temperature
+		end
+	end
+	ZYD.WindAverage["Density"] = (OverallDensity/#n_data)
+	ZYD.WindAverage["Speed"] = (OverallSpeed/#n_data)
+	ZYD.WindAverage["Temperature"] = (OverallTemperature/#n_data)
+end
+
 noaa_data = json.decode(ZYD.HTTP_GetRequest("https://services.swpc.noaa.gov/products/solar-wind/plasma-7-day.json"))
+
+if #noaa_data > 100 then -- Check if there is enough data
+	ZYD.WindAverageG(noaa_data)	
+	ZYD.StaticAverage = false
+else
+	ZYD.StaticAverage = true
+	ZYD.WindAverage["Density"] = ZYD.StaticWindAverage["Density"]
+	ZYD.WindAverage["Speed"] = ZYD.StaticWindAverage["Speed"]
+	ZYD.WindAverage["Temperature"] = ZYD.StaticWindAverage["Temperature"]
+end
 
 CurrentC = 0
 for ind,handler in pairs(noaa_data) do
@@ -99,7 +130,7 @@ for ind,handler in pairs(noaa_data) do
     CurrentC = 0
     if ZYD.LastWind["Speed"] ~= 0 then
       if speed > (ZYD.LastWind["Speed"]+ZYD.LastWind["SpeedDetectionThreeshold"]) then
-        if dest > (ZYD.WindAverage["Destination"]*3) or temp > (ZYD.WindAverage["Temperature"]*3) then
+        if dest > (ZYD.WindAverage["Density"]*3) or temp > (ZYD.WindAverage["Temperature"]*3) then
 			local year,month,day,hour,minute = date:sub(1,4),date:sub(6,7),date:sub(9,10),date:sub(12,13),date:sub(15,16)
 			local video = "https://sdo.gsfc.nasa.gov/assets/img/dailymov/"..year.."/"..month.."/"..day.."/"..year..month..day.."_1024_1700.mp4"
 			local tempTab = {}
@@ -112,7 +143,7 @@ for ind,handler in pairs(noaa_data) do
 		end
       end
     end
-    ZYD.LastWind["Destination"] = dest
+    ZYD.LastWind["Density"] = dest
     ZYD.LastWind["Speed"] = speed
     ZYD.LastWind["Temperature"] = temp
   end
