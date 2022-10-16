@@ -2,6 +2,8 @@ ZYD = {}
 ZYD.Threads = {}
 ZYD.Proxies = {}
 ZYD.Explosions = {}
+ZYD.DownloadHistory = {}
+ZYD.VideoDirectoryName = "videos"
 ZYD.StaticAverage = true
 
 ZYD.LastWind = {
@@ -32,16 +34,12 @@ ZYD.LoadProxies = function(file,tabName)
   end
 end
 
-ZYD.DownloadPC = function(url, path)
+ZYD.Download = function(url, path) -- Can't be done with pcall, sadge
 	if path == nil then
-		ZYD.Execute("wget "..url)
+		os.execute("wget "..url)
 	else
-		ZYD.Execute("wget -P "..path.." "..url)
+		os.execute("wget -P "..path.." "..url)
 	end
-end
-
-ZYD.Download = function(url, path)
-	pcall(ZYD.DownloadPC, url, path)
 end
 
 ZYD.HTTP_GetRequest = function(url)
@@ -123,31 +121,40 @@ end
 
 CurrentC = 0
 for ind,handler in pairs(noaa_data) do
-  CurrentC = CurrentC + 1
-  local date, dest, speed, temp = handler[1],tonumber(handler[2]),tonumber(handler[3]),tonumber(handler[4])
-  if speed ~= nil and dest ~= nil and temp ~= nil then
-  if CurrentC == 2 then
-    CurrentC = 0
-    if ZYD.LastWind["Speed"] ~= 0 then
-      if speed > (ZYD.LastWind["Speed"]+ZYD.LastWind["SpeedDetectionThreeshold"]) then
-        if dest > (ZYD.WindAverage["Density"]*3) or temp > (ZYD.WindAverage["Temperature"]*3) then
-			local year,month,day,hour,minute = date:sub(1,4),date:sub(6,7),date:sub(9,10),date:sub(12,13),date:sub(15,16)
-			local video = "https://sdo.gsfc.nasa.gov/assets/img/dailymov/"..year.."/"..month.."/"..day.."/"..year..month..day.."_1024_1700.mp4"
-			local tempTab = {}
-			tempTab["Date"] = date
-			tempTab["Dest"] = dest
-			tempTab["Speed"] = speed
-			tempTab["Temperature"] = temp
-			
-			table.insert(ZYD.Explosions,tempTab)
+	CurrentC = CurrentC + 1
+	local date, dest, speed, temp = handler[1],tonumber(handler[2]),tonumber(handler[3]),tonumber(handler[4])
+	if speed ~= nil and dest ~= nil and temp ~= nil then
+		if CurrentC == 2 then
+			CurrentC = 0
+			if ZYD.LastWind["Speed"] ~= 0 then
+				if speed > (ZYD.LastWind["Speed"]+ZYD.LastWind["SpeedDetectionThreeshold"]) then
+					if dest > (ZYD.WindAverage["Density"]*3) or temp > (ZYD.WindAverage["Temperature"]*3) then
+						local tempTab = {}
+						tempTab["Date"] = date
+						tempTab["Dest"] = dest
+						tempTab["Speed"] = speed
+						tempTab["Temperature"] = temp
+						
+						table.insert(ZYD.Explosions,tempTab)
+					end
+				end
+			end
+			ZYD.LastWind["Density"] = dest
+			ZYD.LastWind["Speed"] = speed
+			ZYD.LastWind["Temperature"] = temp
 		end
-      end
-    end
-    ZYD.LastWind["Density"] = dest
-    ZYD.LastWind["Speed"] = speed
-    ZYD.LastWind["Temperature"] = temp
-  end
-  end
+	end
 end
 
 ZYD.SaveJson("data.json",ZYD.Explosions)
+
+for a,b in pairs(ZYD.Explosions) do
+	Date = b["Date"]
+	local year,month,day,hour,minute = Date:sub(1,4),Date:sub(6,7),Date:sub(9,10),Date:sub(12,13),Date:sub(15,16)
+	local dir = year.."|"..month.."|"..day
+	local video = "https://sdo.gsfc.nasa.gov/assets/img/dailymov/"..year.."/"..month.."/"..day.."/"..year..month..day.."_1024_1700.mp4"
+	if ZYD.DownloadHistory[dir] ~= true then
+		ZYD.Download(video,ZYD.VideoDirectoryName)
+	end
+	ZYD.DownloadHistory[dir] = true
+end
