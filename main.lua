@@ -5,6 +5,7 @@ ZYD.Explosions = {}
 ZYD.DownloadHistory = {}
 ZYD.VideoDirectoryName = "videos"
 ZYD.StaticAverage = true
+ZYD.AutomateWindAverage = false
 
 ZYD.LastWind = {
   ["Density"] = 0,
@@ -62,12 +63,8 @@ ZYD.HTTP_PostRequest = function(url,data,headers)
   end
 end
 
-ZYD.ExecutePC = function(command)
-	ox.execute(command)
-end
-
 ZYD.Execute = function(command)
-	pcall(ZYD.ExecutePC, command)
+	os.execute(command)
 end
 
 ZYD.WaitPC = function(ms)
@@ -109,7 +106,7 @@ end
 
 noaa_data = json.decode(ZYD.HTTP_GetRequest("https://services.swpc.noaa.gov/products/solar-wind/plasma-7-day.json"))
 
-if #noaa_data > 100 then -- Check if there is enough data
+if #noaa_data > 100 and ZYD.AutomateWindAverage then -- Check if there is enough data
 	ZYD.WindAverageG(noaa_data)	
 	ZYD.StaticAverage = false
 else
@@ -118,7 +115,6 @@ else
 	ZYD.WindAverage["Speed"] = ZYD.StaticWindAverage["Speed"]
 	ZYD.WindAverage["Temperature"] = ZYD.StaticWindAverage["Temperature"]
 end
-
 CurrentC = 0
 for ind,handler in pairs(noaa_data) do
 	CurrentC = CurrentC + 1
@@ -151,10 +147,12 @@ ZYD.SaveJson("data.json",ZYD.Explosions)
 for a,b in pairs(ZYD.Explosions) do
 	Date = b["Date"]
 	local year,month,day,hour,minute = Date:sub(1,4),Date:sub(6,7),Date:sub(9,10),Date:sub(12,13),Date:sub(15,16)
-	local dir = year.."|"..month.."|"..day
+	local dir = year.."."..month.."."..day
 	local video = "https://sdo.gsfc.nasa.gov/assets/img/dailymov/"..year.."/"..month.."/"..day.."/"..year..month..day.."_1024_1700.mp4"
 	if ZYD.DownloadHistory[dir] ~= true then
 		ZYD.Download(video,ZYD.VideoDirectoryName)
+		local fileName = year..month..day.."_1024_1700.mp4"
+		ZYD.Execute("python3 clip.py "..fileName.." "..dir)
 	end
 	ZYD.DownloadHistory[dir] = true
 end
