@@ -6,6 +6,10 @@ ZYD.DownloadHistory = {}
 ZYD.VideoDirectoryName = "videos"
 ZYD.StaticAverage = true
 ZYD.AutomateWindAverage = false
+ZYD.Errors = {
+	["Count"] = 0,
+	["Threeshold"] = 10
+}
 
 ZYD.LastWind = {
   ["Density"] = 0,
@@ -28,6 +32,19 @@ ZYD.WindAverage = {
 
 json = require "json/json" -- HAND Json response
 math.randomseed(os.time())
+
+ZYD.Error = function(text,functionName)
+	ZYD.Errors["Count"] = ZYD.Errors["Count"] + 1
+	if functionName ~= nil then
+		print("Error occured: "..text.." - [Function: "..functionName.."]")
+	else
+		print("Error occured: "..text)
+	end
+	if ZYD.Errors["Count"] >= ZYD.Errors["Threeshold"] then
+		print("Error threeshold has been reached, killing process")
+		os.exit()
+	end
+end
 
 ZYD.LoadProxies = function(file,tabName)
   for line in io.lines(file) do
@@ -73,20 +90,52 @@ ZYD.WaitPC = function(ms)
 end
 
 ZYD.Wait = function(ms)
-    pcall(ZYD.WaitPC, ms)
+	if type(ms) == "number" then
+		pcall(ZYD.WaitPC, ms)
+	else
+		ZYD.Error("expected int not ["..type(ms).."]", "ZYD.Wait")
+	end
 end
 
-ZYD.GetJson =  function(file)
+ZYD.JsonValidation = function(text)
+	json.decode(text)
+	return true
+end
+
+ZYD.LoadJsonFile =  function(file)
     local fileJ = assert(io.open(file, "rw"))
+	if not fileJ then
+		return "no file"
+	end
     local jsonT = fileJ:read("*all")
-    return json.decode(jsonT)
+	io.close(fileJ)
+	if pcall(ZYD.JsonValidation, jsonT) then
+		return json.decode(jsonT)
+	else
+		if string.len(jsonT) == 0 then
+			return "free"
+		else
+			return "Validiation error"
+		end
+	end
 end
 
 ZYD.SaveJson = function(file, tab)
-	jsonG = io.open(file, "a+")
-	local jsonE = json.encode(tab)
-	jsonG:write(jsonE)
-	io.close(jsonG)
+	local currentJ = ZYD.LoadJsonFile(file)
+	if currentJ == "Validiation error" then
+		ZYD.Error("can't decode ["..file.."]-'possible syntax error'", "ZYD.SaveJson")
+	elseif currentJ == "free" then
+		local jsonG = io.open(file, "w+")
+		jsonG:write(json.encode(tab))
+		io.close(jsonG)
+	elseif currentJ == "no file" then
+		ZYD.Error("can't find ["..file.."]", "ZYD.SaveJson")
+	else
+		table.insert(currentJ,tab)
+		local jsonG = io.open(file, "w+")
+		jsonG:write(json.encode(currentJ))
+		io.close(jsonG)
+	end
 end
 
 ZYD.WindAverageG = function(n_data)
