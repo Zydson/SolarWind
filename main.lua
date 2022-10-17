@@ -120,20 +120,26 @@ ZYD.LoadJsonFile =  function(file)
 	end
 end
 
-ZYD.SaveJson = function(file, tab)
+ZYD.SaveJson = function(file, tab, new)
 	local currentJ = ZYD.LoadJsonFile(file)
 	if currentJ == "Validiation error" then
 		ZYD.Error("can't decode ["..file.."]-'possible syntax error'", "ZYD.SaveJson")
-	elseif currentJ == "free" then
+	elseif currentJ == "free" or new then
 		local jsonG = io.open(file, "w+")
 		jsonG:write(json.encode(tab))
 		io.close(jsonG)
 	elseif currentJ == "no file" then
 		ZYD.Error("can't find ["..file.."]", "ZYD.SaveJson")
 	else
-		table.insert(currentJ,tab)
+		local tempTab = {}
+		for a,b in pairs(currentJ) do
+			table.insert(tempTab,b)
+		end
+		for a,b in pairs(tab) do
+			table.insert(tempTab,b)
+		end
 		local jsonG = io.open(file, "w+")
-		jsonG:write(json.encode(currentJ))
+		jsonG:write(json.encode(tempTab))
 		io.close(jsonG)
 	end
 end
@@ -153,6 +159,15 @@ ZYD.WindAverageG = function(n_data)
 	ZYD.WindAverage["Temperature"] = (OverallTemperature/#n_data)
 end
 
+ZYD.LoadHistory = function()
+	ZYD.Explosions = ZYD.LoadJsonFile("data.json")
+	if ZYD.Explosions == "free" then
+		ZYD.Explosions = {}
+	end
+end
+
+ZYD.LoadHistory()
+
 noaa_data = json.decode(ZYD.HTTP_GetRequest("https://services.swpc.noaa.gov/products/solar-wind/plasma-7-day.json"))
 
 if #noaa_data > 100 and ZYD.AutomateWindAverage then -- Check if there is enough data
@@ -164,6 +179,7 @@ else
 	ZYD.WindAverage["Speed"] = ZYD.StaticWindAverage["Speed"]
 	ZYD.WindAverage["Temperature"] = ZYD.StaticWindAverage["Temperature"]
 end
+
 CurrentC = 0
 for ind,handler in pairs(noaa_data) do
 	CurrentC = CurrentC + 1
@@ -180,7 +196,15 @@ for ind,handler in pairs(noaa_data) do
 						tempTab["Speed"] = speed
 						tempTab["Temperature"] = temp
 						
-						table.insert(ZYD.Explosions,tempTab)
+						duplicateFound = false
+						for a,b in pairs(ZYD.Explosions) do
+							if b["Date"] == date then
+								duplicateFound = true
+							end
+						end
+						if not duplicateFound then
+							table.insert(ZYD.Explosions,tempTab)
+						end
 					end
 				end
 			end
@@ -191,8 +215,8 @@ for ind,handler in pairs(noaa_data) do
 	end
 end
 
-ZYD.SaveJson("data.json",ZYD.Explosions)
-
+ZYD.SaveJson("data.json",ZYD.Explosions,true)
+	
 for a,b in pairs(ZYD.Explosions) do
 	Date = b["Date"]
 	local year,month,day,hour,minute = Date:sub(1,4),Date:sub(6,7),Date:sub(9,10),Date:sub(12,13),Date:sub(15,16)
