@@ -6,6 +6,7 @@ ZYD.DownloadHistory = {}
 ZYD.VideoDirectoryName = "videos"
 ZYD.StaticAverage = true
 ZYD.AutomateWindAverage = false
+ZYD.MainLoopTick = 15000 -- MS
 ZYD.Errors = {
 	["Count"] = 0,
 	["Threeshold"] = 10
@@ -33,8 +34,13 @@ ZYD.WindAverage = {
 json = require "json/json" -- HAND Json response
 math.randomseed(os.time())
 
-ZYD.Error = function(text,functionName)
+ZYD.Error = function(text,functionName, critical)
 	ZYD.Errors["Count"] = ZYD.Errors["Count"] + 1
+	if critical then
+		print("Critical error occured: "..text.." - [Function: "..functionName.."]")
+		print("killing process...")
+		os.exit()
+	end
 	if functionName ~= nil then
 		print("Error occured: "..text.." - [Function: "..functionName.."]")
 	else
@@ -93,7 +99,7 @@ ZYD.Wait = function(ms)
 	if type(ms) == "number" then
 		pcall(ZYD.WaitPC, ms)
 	else
-		ZYD.Error("expected int not ["..type(ms).."]", "ZYD.Wait")
+		ZYD.Error("expected int not ["..type(ms).."]", "ZYD.Wait", false)
 	end
 end
 
@@ -103,9 +109,9 @@ ZYD.JsonValidation = function(text)
 end
 
 ZYD.LoadJsonFile =  function(file)
-    local fileJ = assert(io.open(file, "rw"))
+    local fileJ = io.open(file, "r")
 	if not fileJ then
-		return "no file"
+		ZYD.Error("can't find ["..file.."]", "ZYD.SaveJson", true)
 	end
     local jsonT = fileJ:read("*all")
 	io.close(fileJ)
@@ -115,6 +121,7 @@ ZYD.LoadJsonFile =  function(file)
 		if string.len(jsonT) == 0 then
 			return "free"
 		else
+			ZYD.Error("can't decode ["..file.."]-'possible syntax error'", "ZYD.SaveJson", true)
 			return "Validiation error"
 		end
 	end
@@ -123,13 +130,13 @@ end
 ZYD.SaveJson = function(file, tab, new)
 	local currentJ = ZYD.LoadJsonFile(file)
 	if currentJ == "Validiation error" then
-		ZYD.Error("can't decode ["..file.."]-'possible syntax error'", "ZYD.SaveJson")
+		--pass
 	elseif currentJ == "free" or new then
 		local jsonG = io.open(file, "w+")
 		jsonG:write(json.encode(tab))
 		io.close(jsonG)
 	elseif currentJ == "no file" then
-		ZYD.Error("can't find ["..file.."]", "ZYD.SaveJson")
+		--pass
 	else
 		local tempTab = {}
 		for a,b in pairs(currentJ) do
@@ -181,51 +188,63 @@ else
 end
 
 CurrentC = 0
-for ind,handler in pairs(noaa_data) do
-	CurrentC = CurrentC + 1
-	local date, dest, speed, temp = handler[1],tonumber(handler[2]),tonumber(handler[3]),tonumber(handler[4])
-	if speed ~= nil and dest ~= nil and temp ~= nil then
-		if CurrentC == 2 then
-			CurrentC = 0
-			if ZYD.LastWind["Speed"] ~= 0 then
-				if speed > (ZYD.LastWind["Speed"]+ZYD.LastWind["SpeedDetectionThreeshold"]) then
-					if dest > (ZYD.WindAverage["Density"]*3) or temp > (ZYD.WindAverage["Temperature"]*3) then
-						local tempTab = {}
-						tempTab["Date"] = date
-						tempTab["Dest"] = dest
-						tempTab["Speed"] = speed
-						tempTab["Temperature"] = temp
-						
-						duplicateFound = false
-						for a,b in pairs(ZYD.Explosions) do
-							if b["Date"] == date then
-								duplicateFound = true
+while true do
+	noaa_data = json.decode(ZYD.HTTP_GetRequest("https://services.swpc.noaa.gov/products/solar-wind/plasma-7-day.json"))
+	
+	for ind,handler in pairs(noaa_data) do
+		CurrentC = CurrentC + 1
+		local date, dest, speed, temp = handler[1],tonumber(handler[2]),tonumber(handler[3]),tonumber(handler[4])
+		if speed ~= nil and dest ~= nil and temp ~= nil then
+			if CurrentC == 2 then
+				CurrentC = 0
+				if ZYD.LastWind["Speed"] ~= 0 then
+					if speed > (ZYD.LastWind["Speed"]+ZYD.LastWind["SpeedDetectionThreeshold"]) then
+						if dest > (ZYD.WindAverage["Density"]*3) or temp > (ZYD.WindAverage["Temperature"]*3) then
+							local tempTab = {}
+							tempTab["Date"] = date
+							tempTab["Dest"] = dest
+							tempTab["Speed"] = speed
+							tempTab["Temperature"] = temp
+							
+							duplicateFound = false
+							for a,b in pairs(ZYD.Explosions) do
+								if b["Date"] == date then
+									duplicateFound = true
+								end
 							end
-						end
-						if not duplicateFound then
-							table.insert(ZYD.Explosions,tempTab)
+							if not duplicateFound then
+								table.insert(ZYD.Explosions,tempTab)
+							end
 						end
 					end
 				end
+				ZYD.LastWind["Density"] = dest
+				ZYD.LastWind["Speed"] = speed
+				ZYD.LastWind["Temperature"] = temp
 			end
-			ZYD.LastWind["Density"] = dest
-			ZYD.LastWind["Speed"] = speed
-			ZYD.LastWind["Temperature"] = temp
 		end
 	end
-end
-
-ZYD.SaveJson("data.json",ZYD.Explosions,true)
 	
-for a,b in pairs(ZYD.Explosions) do
-	Date = b["Date"]
-	local year,month,day,hour,minute = Date:sub(1,4),Date:sub(6,7),Date:sub(9,10),Date:sub(12,13),Date:sub(15,16)
-	local dir = year.."."..month.."."..day
-	local video = "https://sdo.gsfc.nasa.gov/assets/img/dailymov/"..year.."/"..month.."/"..day.."/"..year..month..day.."_1024_1700.mp4"
-	if ZYD.DownloadHistory[dir] ~= true then
-		ZYD.Download(video,ZYD.VideoDirectoryName)
+	ZYD.SaveJson("data.json",ZYD.Explosions,true)
+		
+	for a,b in pairs(ZYD.Explosions) do
+		Date = b["Date"]
+		local year,month,day,hour,minute = Date:sub(1,4),Date:sub(6,7),Date:sub(9,10),Date:sub(12,13),Date:sub(15,16)
 		local fileName = year..month..day.."_1024_1700.mp4"
-		ZYD.Execute("python3 clip.py "..fileName.." "..dir)
+		local file = io.open(ZYD.VideoDirectoryName.."/"..fileName)
+		if not file then
+			local dir = year.."."..month.."."..day
+			local video = "https://sdo.gsfc.nasa.gov/assets/img/dailymov/"..year.."/"..month.."/"..day.."/"..year..month..day.."_1024_1700.mp4"
+			if ZYD.DownloadHistory[dir] ~= true then
+				if year == os.date("%Y") and month == os.date("%m") and day == os.date("%d") then
+					--pass
+				else
+					ZYD.Download(video,ZYD.VideoDirectoryName)
+					ZYD.Execute("python3 clip.py "..fileName.." "..dir)
+				end
+			end
+			ZYD.DownloadHistory[dir] = true
+		end
 	end
-	ZYD.DownloadHistory[dir] = true
+	ZYD.Wait(ZYD.MainLoopTick)
 end
