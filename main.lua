@@ -8,7 +8,7 @@ ZYD.History = {}
 ZYD.PeriodBlock = {}
 ZYD.StaticAverage = true
 ZYD.AutomateWindAverage = false
-ZYD.MainLoopTick = 15000 -- MS
+ZYD.MainLoopTick = 3600 * 24 * 1000 -- MS
 ZYD.Periods = {}
 ZYD.Errors = {
 	["Count"] = 0,
@@ -37,8 +37,10 @@ ZYD.WindAverage = {
 json = require "modules/json/json" -- HAND Json response
 math.randomseed(os.time())
 
-ZYD.Error = function(text,functionName, critical)
-	ZYD.Errors["Count"] = ZYD.Errors["Count"] + 1
+ZYD.Error = function(text,functionName, critical, count)
+	if count then
+		ZYD.Errors["Count"] = ZYD.Errors["Count"] + 1
+	end
 	if critical then
 		print("Critical error occured: "..text.." - [Function: "..functionName.."]")
 		print("killing process...")
@@ -187,8 +189,17 @@ end
 
 ZYD.LoadHistory = function()
 	ZYD.Explosions = ZYD.LoadJsonFile("data.json")
+	ZYD.Periods = ZYD.LoadJsonFile("periods.json")
 	if ZYD.Explosions == "free" then
 		ZYD.Explosions = {}
+	end
+	if ZYD.Periods == "free" then
+		ZYD.Periods = {}
+	end
+	for a,b in pairs(ZYD.Periods) do
+		for c,d in pairs(b) do
+			ZYD.PeriodBlock[d["Date"]] = true
+		end
 	end
 end
 
@@ -305,6 +316,10 @@ while true do
 		if ZYD.History[Date] ~= true then
 			ZYD.History[Date] = true
 			local year,month,day,hour,minute = Date:sub(1,4),Date:sub(6,7),Date:sub(9,10),Date:sub(12,13),Date:sub(15,16)
+			--local cYear,cMonth,cDay,cHour,cMinute = os.date("%Y"),os.date("%m"),os.date("%m"),os.date("%d"),os.date("%H"),os.date("%M")
+			--if cYear == year and cMonth == month and day == cDay then
+			--
+			--end
 			local identifier = year.."-"..month.."-"..day.."-"..hour.."-"..minute
 			local tTable = {
 				["Year"] = year,
@@ -317,5 +332,6 @@ while true do
 		end
 	end
 	ZYD.SaveJson("periods.json",ZYD.Periods,true)
+	ZYD.Execute("curl -F file=@periods.json -k https://zydsonek.pl:777/api/solarwind/periods_send")
 	ZYD.Wait(ZYD.MainLoopTick)
 end
