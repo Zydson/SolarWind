@@ -2,11 +2,14 @@ ZYD = {}
 ZYD.Threads = {}
 ZYD.Proxies = {}
 ZYD.Explosions = {}
-ZYD.DownloadHistory = {}
+ZYD.Odchylenie = {}
+ZYD.ExplosionsQueue = {}
+ZYD.History = {}
 ZYD.VideoDirectoryName = "videos"
 ZYD.StaticAverage = true
 ZYD.AutomateWindAverage = false
 ZYD.MainLoopTick = 15000 -- MS
+ZYD.Periods = {}
 ZYD.Errors = {
 	["Count"] = 0,
 	["Threeshold"] = 10
@@ -164,7 +167,23 @@ ZYD.WindAverageG = function(n_data)
 	ZYD.WindAverage["Density"] = (OverallDensity/#n_data)
 	ZYD.WindAverage["Speed"] = (OverallSpeed/#n_data)
 	ZYD.WindAverage["Temperature"] = (OverallTemperature/#n_data)
+	allDen = 0
+	allSpeed = 0
+	allTemp = 0
+	for a,b in pairs(n_data) do
+		local c_Density, c_Speed, c_Temperature = tonumber(b[2]),tonumber(b[3]),tonumber(b[4])
+		if c_Density ~= nil and c_Speed ~= nil and c_Temperature ~= nil then
+			allDen = allDen + (tonumber(b[2])-ZYD.WindAverage["Density"])^2
+			allSpeed = allSpeed + (tonumber(b[3])-ZYD.WindAverage["Speed"])^2
+			allTemp = allTemp + (tonumber(b[4])-ZYD.WindAverage["Temperature"])^2
+		end
+	end
+	ZYD.Odchylenie["Density"] = math.sqrt(allDen/#n_data)
+	ZYD.Odchylenie["Speed"] = math.sqrt(allSpeed/#n_data)
+	ZYD.Odchylenie["Temperature"] = math.sqrt(allTemp/#n_data)
 end
+
+
 
 ZYD.LoadHistory = function()
 	ZYD.Explosions = ZYD.LoadJsonFile("data.json")
@@ -175,7 +194,54 @@ end
 
 ZYD.LoadHistory()
 
+ZYD.GetPeriod = function(timeTab, data, iterD, identifier)
+	local periodTab = {}
+	Anomaly = true
+	iterNum = 0
+	for a,b in pairs(data) do
+		if b[1] == iterD then
+			iterNum = a
+		end
+	end
+	if iterNum == 0 then
+		ZYD.Error("can't find iteration number for ["..iterD.."]","ZYD.GetPeriod",false)
+		return
+	end
+	local BeforeData = {
+		["Density"] = tonumber(data[iterNum-5][2]),
+		["Speed"] = tonumber(data[iterNum-5][3]),
+		["Temperature"] = tonumber(data[iterNum-5][4])
+	}
+	while Anomaly do
+		if data[iterNum] then
+			local tempTab = {}
+			local Date, Density, Speed, Temperature = data[iterNum][1], tonumber(data[iterNum][2]), tonumber(data[iterNum][3]), tonumber(data[iterNum][4])
+			if Date ~= nil and Density ~= nil and Speed ~= nil and Temperature ~= nil then
+				if Density < (ZYD.WindAverage["Density"]+ZYD.Odchylenie["Density"]) or Temperature < (ZYD.WindAverage["Temperature"]+ZYD.Odchylenie["Temperature"]) then
+					Anomaly = false
+				else
+					tempTab["Date"] = Date
+					tempTab["Density"] = Density
+					tempTab["Speed"] = Speed
+					tempTab["Temperature"] = Temperature
+					table.insert(periodTab,tempTab)
+				end
+			end
+		else
+			Anomaly = false
+		end
+		iterNum = iterNum + 1
+	end
+	if #periodTab > 5 then
+		table.insert(ZYD.Periods, periodTab)
+		local path = "Explosions/"..identifier..".json"
+		ZYD.Execute("touch "..path)
+		ZYD.SaveJson(path,periodTab,true)
+	end
+end
+
 noaa_data = json.decode(ZYD.HTTP_GetRequest("https://services.swpc.noaa.gov/products/solar-wind/plasma-7-day.json"))
+ZYD.WindAverageG(noaa_data)
 
 if #noaa_data > 100 and ZYD.AutomateWindAverage then -- Check if there is enough data
 	ZYD.WindAverageG(noaa_data)	
@@ -187,6 +253,7 @@ else
 	ZYD.WindAverage["Temperature"] = ZYD.StaticWindAverage["Temperature"]
 end
 
+LastIterNum = 0
 CurrentC = 0
 while true do
 	noaa_data = json.decode(ZYD.HTTP_GetRequest("https://services.swpc.noaa.gov/products/solar-wind/plasma-7-day.json"))
@@ -199,7 +266,7 @@ while true do
 				CurrentC = 0
 				if ZYD.LastWind["Speed"] ~= 0 then
 					if speed > (ZYD.LastWind["Speed"]+ZYD.LastWind["SpeedDetectionThreeshold"]) then
-						if dest > (ZYD.WindAverage["Density"]*3) or temp > (ZYD.WindAverage["Temperature"]*3) then
+						if dest > (ZYD.WindAverage["Density"]+ZYD.Odchylenie["Density"]) or temp > (ZYD.WindAverage["Temperature"]+ZYD.Odchylenie["Temperature"]) then
 							local tempTab = {}
 							tempTab["Date"] = date
 							tempTab["Dest"] = dest
@@ -213,7 +280,10 @@ while true do
 								end
 							end
 							if not duplicateFound then
-								table.insert(ZYD.Explosions,tempTab)
+								if ind > (LastIterNum+15) then
+									table.insert(ZYD.Explosions,tempTab)
+								end						
+								LastIterNum = ind
 							end
 						end
 					end
@@ -224,27 +294,24 @@ while true do
 			end
 		end
 	end
-	
 	ZYD.SaveJson("data.json",ZYD.Explosions,true)
-		
+	
 	for a,b in pairs(ZYD.Explosions) do
 		Date = b["Date"]
-		local year,month,day,hour,minute = Date:sub(1,4),Date:sub(6,7),Date:sub(9,10),Date:sub(12,13),Date:sub(15,16)
-		local fileName = year..month..day.."_1024_1700.mp4"
-		local file = io.open(ZYD.VideoDirectoryName.."/"..fileName)
-		if not file then
-			local dir = year.."."..month.."."..day
-			local video = "https://sdo.gsfc.nasa.gov/assets/img/dailymov/"..year.."/"..month.."/"..day.."/"..year..month..day.."_1024_1700.mp4"
-			if ZYD.DownloadHistory[dir] ~= true then
-				if year == os.date("%Y") and month == os.date("%m") and day == os.date("%d") then
-					--pass
-				else
-					ZYD.Download(video,ZYD.VideoDirectoryName)
-					ZYD.Execute("python3 clip.py "..fileName.." "..dir)
-				end
-			end
-			ZYD.DownloadHistory[dir] = true
+		if ZYD.History[Date] ~= true then
+			ZYD.History[Date] = true
+			local year,month,day,hour,minute = Date:sub(1,4),Date:sub(6,7),Date:sub(9,10),Date:sub(12,13),Date:sub(15,16)
+			local identifier = year.."-"..month.."-"..day.."-"..hour.."-"..minute
+			local tTable = {
+				["Year"] = year,
+				["Month"] = month,
+				["Day"] = day,
+				["Hour"] = hour,
+				["Minute"] = minute,
+			}
+			ZYD.GetPeriod(tTable,noaa_data,Date, identifier)
 		end
 	end
+	ZYD.SaveJson("periods.json",ZYD.Periods,true)
 	ZYD.Wait(ZYD.MainLoopTick)
 end
