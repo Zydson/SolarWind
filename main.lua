@@ -2,10 +2,10 @@ ZYD = {}
 ZYD.Threads = {}
 ZYD.Proxies = {}
 ZYD.Explosions = {}
-ZYD.Odchylenie = {}
+ZYD.Deviation = {}
 ZYD.ExplosionsQueue = {}
 ZYD.History = {}
-ZYD.VideoDirectoryName = "videos"
+ZYD.PeriodBlock = {}
 ZYD.StaticAverage = true
 ZYD.AutomateWindAverage = false
 ZYD.MainLoopTick = 15000 -- MS
@@ -178,9 +178,9 @@ ZYD.WindAverageG = function(n_data)
 			allTemp = allTemp + (tonumber(b[4])-ZYD.WindAverage["Temperature"])^2
 		end
 	end
-	ZYD.Odchylenie["Density"] = math.sqrt(allDen/#n_data)
-	ZYD.Odchylenie["Speed"] = math.sqrt(allSpeed/#n_data)
-	ZYD.Odchylenie["Temperature"] = math.sqrt(allTemp/#n_data)
+	ZYD.Deviation["Density"] = math.sqrt(allDen/#n_data)
+	ZYD.Deviation["Speed"] = math.sqrt(allSpeed/#n_data)
+	ZYD.Deviation["Temperature"] = math.sqrt(allTemp/#n_data)
 end
 
 
@@ -217,7 +217,7 @@ ZYD.GetPeriod = function(timeTab, data, iterD, identifier)
 			local tempTab = {}
 			local Date, Density, Speed, Temperature = data[iterNum][1], tonumber(data[iterNum][2]), tonumber(data[iterNum][3]), tonumber(data[iterNum][4])
 			if Date ~= nil and Density ~= nil and Speed ~= nil and Temperature ~= nil then
-				if Density < (ZYD.WindAverage["Density"]+ZYD.Odchylenie["Density"]) or Temperature < (ZYD.WindAverage["Temperature"]+ZYD.Odchylenie["Temperature"]) then
+				if Density < (ZYD.WindAverage["Density"]+ZYD.Deviation["Density"]) or Temperature < (ZYD.WindAverage["Temperature"]+ZYD.Deviation["Temperature"]) then
 					Anomaly = false
 				else
 					tempTab["Date"] = Date
@@ -232,11 +232,15 @@ ZYD.GetPeriod = function(timeTab, data, iterD, identifier)
 		end
 		iterNum = iterNum + 1
 	end
+
 	if #periodTab > 5 then
-		table.insert(ZYD.Periods, periodTab)
-		local path = "Explosions/"..identifier..".json"
-		ZYD.Execute("touch "..path)
-		ZYD.SaveJson(path,periodTab,true)
+		if ZYD.PeriodBlock[periodTab[#periodTab]["Date"]] ~= true then
+			table.insert(ZYD.Periods, periodTab)
+			local path = "Explosions/"..identifier..".json"
+			ZYD.Execute("touch "..path)
+			ZYD.SaveJson(path,periodTab,true)
+			ZYD.PeriodBlock[periodTab[#periodTab]["Date"]] = true
+		end
 	end
 end
 
@@ -266,7 +270,7 @@ while true do
 				CurrentC = 0
 				if ZYD.LastWind["Speed"] ~= 0 then
 					if speed > (ZYD.LastWind["Speed"]+ZYD.LastWind["SpeedDetectionThreeshold"]) then
-						if dest > (ZYD.WindAverage["Density"]+ZYD.Odchylenie["Density"]) or temp > (ZYD.WindAverage["Temperature"]+ZYD.Odchylenie["Temperature"]) then
+						if dest > (ZYD.WindAverage["Density"]+ZYD.Deviation["Density"]) or temp > (ZYD.WindAverage["Temperature"]+ZYD.Deviation["Temperature"]) then
 							local tempTab = {}
 							tempTab["Date"] = date
 							tempTab["Dest"] = dest
