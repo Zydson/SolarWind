@@ -34,7 +34,7 @@ ZYD.WindAverage = {
   ["Temperature"] = nil
 }
 
-json = require "json/json" -- HAND Json response
+json = require "modules/json/json" -- HAND Json response
 math.randomseed(os.time())
 
 ZYD.Error = function(text,functionName, critical)
