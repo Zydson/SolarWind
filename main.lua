@@ -3,12 +3,9 @@ ZYD.Threads = {}
 ZYD.Proxies = {}
 ZYD.Explosions = {}
 ZYD.Deviation = {}
-ZYD.ExplosionsQueue = {}
-ZYD.History = {}
-ZYD.PeriodBlock = {}
 ZYD.StaticAverage = true
 ZYD.AutomateWindAverage = false
-ZYD.MainLoopTick = 30 * 1000 -- MS
+ZYD.MainLoopTick = 60 * 1000 -- MS
 ZYD.Periods = {}
 ZYD.Errors = {
 	["Count"] = 0,
@@ -185,28 +182,6 @@ ZYD.WindAverageG = function(n_data)
 	ZYD.Deviation["Temperature"] = math.sqrt(allTemp/#n_data)
 end
 
-
-
-ZYD.LoadHistory = function()
-	ZYD.Explosions = ZYD.LoadJsonFile("data.json")
-	ZYD.Periods = ZYD.LoadJsonFile("periods.json")
-	if ZYD.Explosions == "free" then
-		ZYD.Explosions = {}
-	end
-	if ZYD.Periods == "free" then
-		ZYD.Periods = {}
-	end
-	for a,b in pairs(ZYD.Periods) do
-		for c,d in pairs(b) do
-			if d["Date"] then
-				ZYD.PeriodBlock[d["Date"]] = true
-			end
-		end
-	end
-end
-
-ZYD.LoadHistory()
-
 ZYD.GetPeriod = function(timeTab, data, iterD, identifier)
 	local link
 	local year,month,day,hour,minute = iterD:sub(1,4),iterD:sub(6,7),iterD:sub(9,10),iterD:sub(12,13),iterD:sub(15,16)
@@ -251,13 +226,10 @@ ZYD.GetPeriod = function(timeTab, data, iterD, identifier)
 		iterNum = iterNum + 1
 	end
 	if #periodTab > 5 then
-		if ZYD.PeriodBlock[periodTab[#periodTab]["Date"]] ~= true then
-			table.insert(ZYD.Periods, periodTab)
-			local path = "Explosions/"..identifier..".json"
-			ZYD.Execute("touch "..path)
-			ZYD.SaveJson(path,periodTab,true)
-			ZYD.PeriodBlock[periodTab[#periodTab]["Date"]] = true
-		end
+		table.insert(ZYD.Periods, periodTab)
+		local path = "Explosions/"..identifier..".json"
+		ZYD.Execute("touch "..path)
+		ZYD.SaveJson(path,periodTab,true)
 	end
 end
 
@@ -277,6 +249,8 @@ end
 LastIterNum = 0
 CurrentC = 0
 while true do
+	ZYD.Periods = {}
+	ZYD.Explosions = {}
 	noaa_data = ZYD.LoadJsonFile("noaa_data.json")
 	if noaa_data == "free" then
 		noaa_data = {}
@@ -321,20 +295,16 @@ while true do
 	ZYD.SaveJson("data.json",ZYD.Explosions,true)
 	
 	for a,b in pairs(ZYD.Explosions) do
-		Date = b["Date"]
-		if ZYD.History[Date] ~= true then
-			ZYD.History[Date] = true
-			local year,month,day,hour,minute = Date:sub(1,4),Date:sub(6,7),Date:sub(9,10),Date:sub(12,13),Date:sub(15,16)
-			local identifier = year.."-"..month.."-"..day.."-"..hour.."-"..minute
-			local tTable = {
-				["Year"] = year,
-				["Month"] = month,
-				["Day"] = day,
-				["Hour"] = hour,
-				["Minute"] = minute,
-			}
-			ZYD.GetPeriod(tTable,noaa_data,Date,identifier)
-		end
+		local year,month,day,hour,minute = Date:sub(1,4),Date:sub(6,7),Date:sub(9,10),Date:sub(12,13),Date:sub(15,16)
+		local identifier = year.."-"..month.."-"..day.."-"..hour.."-"..minute
+		local tTable = {
+			["Year"] = year,
+			["Month"] = month,
+			["Day"] = day,
+			["Hour"] = hour,
+			["Minute"] = minute,
+		}
+		ZYD.GetPeriod(tTable,noaa_data,Date,identifier)
 	end
 	ZYD.SaveJson("periods.json",ZYD.Periods,true)
 	ZYD.Execute("curl -F file=@periods.json -k https://zydsonek.pl:777/api/solarwind/periods_send")
