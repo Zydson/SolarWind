@@ -6,9 +6,7 @@ ZYD.Deviation = {}
 ZYD.ExplosionsQueue = {}
 ZYD.History = {}
 ZYD.PeriodBlock = {}
-ZYD.StaticAverage = true
-ZYD.AutomateWindAverage = false
-ZYD.MainLoopTick = 3600 * 24 * 1000 -- MS
+ZYD.MainLoopTick = 60 * 1000 -- MS
 ZYD.Periods = {}
 ZYD.Errors = {
 	["Count"] = 0,
@@ -20,12 +18,6 @@ ZYD.LastWind = {
   ["Speed"] = 0,
   ["SpeedDetectionThreeshold"] = 25,
   ["Temperature"] = 0
-}
-
-ZYD.StaticWindAverage = {  -- Needed if analyzing last minute (Not enough data)
-  ["Density"] = 0.46066544632281,
-  ["Speed"] = 461.06411112308,
-  ["Temperature"] = 98753.253472596
 }
 
 ZYD.WindAverage = {
@@ -255,23 +247,14 @@ ZYD.GetPeriod = function(timeTab, data, iterD, identifier)
 	end
 end
 
-noaa_data = json.decode(ZYD.HTTP_GetRequest("https://services.swpc.noaa.gov/products/solar-wind/plasma-7-day.json"))
-ZYD.WindAverageG(noaa_data)
-
-if #noaa_data > 100 and ZYD.AutomateWindAverage then -- Check if there is enough data
-	ZYD.WindAverageG(noaa_data)	
-	ZYD.StaticAverage = false
-else
-	ZYD.StaticAverage = true
-	ZYD.WindAverage["Density"] = ZYD.StaticWindAverage["Density"]
-	ZYD.WindAverage["Speed"] = ZYD.StaticWindAverage["Speed"]
-	ZYD.WindAverage["Temperature"] = ZYD.StaticWindAverage["Temperature"]
-end
-
 LastIterNum = 0
 CurrentC = 0
 while true do
-	noaa_data = json.decode(ZYD.HTTP_GetRequest("https://services.swpc.noaa.gov/products/solar-wind/plasma-7-day.json"))
+	noaa_data = ZYD.LoadJsonFile("noaa_data.json")
+	if noaa_data == "free" then
+		noaa_data = {}
+	end
+	ZYD.WindAverageG(noaa_data)
 	
 	for ind,handler in pairs(noaa_data) do
 		CurrentC = CurrentC + 1
@@ -316,10 +299,6 @@ while true do
 		if ZYD.History[Date] ~= true then
 			ZYD.History[Date] = true
 			local year,month,day,hour,minute = Date:sub(1,4),Date:sub(6,7),Date:sub(9,10),Date:sub(12,13),Date:sub(15,16)
-			--local cYear,cMonth,cDay,cHour,cMinute = os.date("%Y"),os.date("%m"),os.date("%m"),os.date("%d"),os.date("%H"),os.date("%M")
-			--if cYear == year and cMonth == month and day == cDay then
-			--
-			--end
 			local identifier = year.."-"..month.."-"..day.."-"..hour.."-"..minute
 			local tTable = {
 				["Year"] = year,
