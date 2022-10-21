@@ -6,7 +6,9 @@ ZYD.Deviation = {}
 ZYD.ExplosionsQueue = {}
 ZYD.History = {}
 ZYD.PeriodBlock = {}
-ZYD.MainLoopTick = 60 * 1000 -- MS
+ZYD.StaticAverage = true
+ZYD.AutomateWindAverage = false
+ZYD.MainLoopTick = 3600 * 24 * 1000 -- MS
 ZYD.Periods = {}
 ZYD.Errors = {
 	["Count"] = 0,
@@ -18,6 +20,12 @@ ZYD.LastWind = {
   ["Speed"] = 0,
   ["SpeedDetectionThreeshold"] = 25,
   ["Temperature"] = 0
+}
+
+ZYD.StaticWindAverage = {  -- Needed if analyzing last minute (Not enough data)
+  ["Density"] = 0.46066544632281,
+  ["Speed"] = 461.06411112308,
+  ["Temperature"] = 98753.253472596
 }
 
 ZYD.WindAverage = {
@@ -190,7 +198,9 @@ ZYD.LoadHistory = function()
 	end
 	for a,b in pairs(ZYD.Periods) do
 		for c,d in pairs(b) do
-			ZYD.PeriodBlock[d["Date"]] = true
+			if d["Date"] then
+				ZYD.PeriodBlock[d["Date"]] = true
+			end
 		end
 	end
 end
@@ -198,23 +208,28 @@ end
 ZYD.LoadHistory()
 
 ZYD.GetPeriod = function(timeTab, data, iterD, identifier)
-	local periodTab = {}
+	local link
+	local year,month,day,hour,minute = iterD:sub(1,4),iterD:sub(6,7),iterD:sub(9,10),iterD:sub(12,13),iterD:sub(15,16)
+	periodTab = {}
+	if os.date("%Y") == year and os.date("%m") == month and os.date("%d") == day then
+		link = "None"
+	else
+		link = "https://sdo.gsfc.nasa.gov/assets/img/dailymov/"..year.."/"..month.."/"..day.."/"..year..month..day.."_1024_1700.mp4"
+	end
+	table.insert(periodTab,link)
+	
 	Anomaly = true
-	iterNum = 0
+
 	for a,b in pairs(data) do
 		if b[1] == iterD then
 			iterNum = a
 		end
 	end
+
 	if iterNum == 0 then
 		ZYD.Error("can't find iteration number for ["..iterD.."]","ZYD.GetPeriod",false)
 		return
 	end
-	local BeforeData = {
-		["Density"] = tonumber(data[iterNum-5][2]),
-		["Speed"] = tonumber(data[iterNum-5][3]),
-		["Temperature"] = tonumber(data[iterNum-5][4])
-	}
 	while Anomaly do
 		if data[iterNum] then
 			local tempTab = {}
@@ -235,7 +250,6 @@ ZYD.GetPeriod = function(timeTab, data, iterD, identifier)
 		end
 		iterNum = iterNum + 1
 	end
-
 	if #periodTab > 5 then
 		if ZYD.PeriodBlock[periodTab[#periodTab]["Date"]] ~= true then
 			table.insert(ZYD.Periods, periodTab)
@@ -247,6 +261,19 @@ ZYD.GetPeriod = function(timeTab, data, iterD, identifier)
 	end
 end
 
+noaa_data = ZYD.LoadJsonFile("noaa_data.json")
+ZYD.WindAverageG(noaa_data)
+
+if #noaa_data > 100 and ZYD.AutomateWindAverage then -- Check if there is enough data
+	ZYD.WindAverageG(noaa_data)	
+	ZYD.StaticAverage = false
+else
+	ZYD.StaticAverage = true
+	ZYD.WindAverage["Density"] = ZYD.StaticWindAverage["Density"]
+	ZYD.WindAverage["Speed"] = ZYD.StaticWindAverage["Speed"]
+	ZYD.WindAverage["Temperature"] = ZYD.StaticWindAverage["Temperature"]
+end
+
 LastIterNum = 0
 CurrentC = 0
 while true do
@@ -254,7 +281,6 @@ while true do
 	if noaa_data == "free" then
 		noaa_data = {}
 	end
-	ZYD.WindAverageG(noaa_data)
 	
 	for ind,handler in pairs(noaa_data) do
 		CurrentC = CurrentC + 1
@@ -307,7 +333,7 @@ while true do
 				["Hour"] = hour,
 				["Minute"] = minute,
 			}
-			ZYD.GetPeriod(tTable,noaa_data,Date, identifier)
+			ZYD.GetPeriod(tTable,noaa_data,Date,identifier)
 		end
 	end
 	ZYD.SaveJson("periods.json",ZYD.Periods,true)
