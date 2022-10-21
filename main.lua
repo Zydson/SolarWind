@@ -257,7 +257,7 @@ while true do
 	ZYD.Explosions = {}
 	ZYD.PeriodBlock = {}
 	noaa_data = ZYD.LoadJsonFile("noaa_data.json")
-	if noaa_data == "free" or type(noaa_data) == "string" then
+	if type(noaa_data) ~= "table" then
 		repeat
 			ZYD.Wait(5000)
 			noaa_data = ZYD.LoadJsonFile("noaa_data.json")
