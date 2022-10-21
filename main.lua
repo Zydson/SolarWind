@@ -7,6 +7,7 @@ ZYD.StaticAverage = true
 ZYD.AutomateWindAverage = false
 ZYD.MainLoopTick = 60 * 1000 -- MS
 ZYD.Periods = {}
+ZYD.PeriodBlock = {}
 ZYD.Errors = {
 	["Count"] = 0,
 	["Threeshold"] = 10
@@ -226,10 +227,13 @@ ZYD.GetPeriod = function(timeTab, data, iterD, identifier)
 		iterNum = iterNum + 1
 	end
 	if #periodTab > 5 then
-		table.insert(ZYD.Periods, periodTab)
-		local path = "Explosions/"..identifier..".json"
-		ZYD.Execute("touch "..path)
-		ZYD.SaveJson(path,periodTab,true)
+		if ZYD.PeriodBlock[periodTab[#periodTab]["Date"]] ~= true then
+			table.insert(ZYD.Periods, periodTab)
+			local path = "Explosions/"..identifier..".json"
+			ZYD.Execute("touch "..path)
+			ZYD.SaveJson(path,periodTab,true)
+			ZYD.PeriodBlock[periodTab[#periodTab]["Date"]] = true
+		end
 	end
 end
 
@@ -251,9 +255,13 @@ CurrentC = 0
 while true do
 	ZYD.Periods = {}
 	ZYD.Explosions = {}
+	ZYD.PeriodBlock = {}
 	noaa_data = ZYD.LoadJsonFile("noaa_data.json")
-	if noaa_data == "free" then
-		noaa_data = {}
+	if noaa_data == "free" or type(noaa_data) == "string" then
+		repeat
+			ZYD.Wait(5000)
+			noaa_data = ZYD.LoadJsonFile("noaa_data.json")
+		until type(noaa_data) == "table"
 	end
 	
 	for ind,handler in pairs(noaa_data) do
