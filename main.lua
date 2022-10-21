@@ -295,6 +295,7 @@ while true do
 	ZYD.SaveJson("data.json",ZYD.Explosions,true)
 	
 	for a,b in pairs(ZYD.Explosions) do
+		Date = b["Date"]
 		local year,month,day,hour,minute = Date:sub(1,4),Date:sub(6,7),Date:sub(9,10),Date:sub(12,13),Date:sub(15,16)
 		local identifier = year.."-"..month.."-"..day.."-"..hour.."-"..minute
 		local tTable = {
